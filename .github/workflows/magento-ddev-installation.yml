@@ -1,73 +1,145 @@
-name: Magento 2 Installation with DDEV
+name: "Magento 2 installation with DDEV"
+author: "Julien Loizelet"
+description: " A Github Action for installing Magento 2 with DDEV"
 
-on:
-  push:
-    branches:
-      - main
+inputs:
 
-jobs:
-  magento-install:
-    runs-on: ubuntu-latest
+  php_version:
+    type: string
+    required: false
+    default: "7.3"  # Ajustado para Magento 2.3.5
+    description: "PHP Version to use"
 
-    steps:
-      # Paso 1: Instalar PHP 7.3
-      - name: Set up PHP 7.3
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: '7.3'
+  database:
+    type: string
+    required: false
+    default: ""
+    description: "Database type and version to use"
 
-      # Paso 2: Checkout del repositorio
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  magento_edition:
+    type: string
+    required: false
+    default: "magento/project-community-edition"
+    description: "The edition of Magento to install"
 
-      # Paso 3: Instalar Composer 1.x
-      - name: Install Composer 1.x locally
-        run: |
-          curl -sS https://getcomposer.org/installer | php -- --1
-          mv composer.phar composer
+  magento_version:
+    type: string
+    required: false
+    default: "2.3.5"  # Ajustado para Magento 2.3.5
+    description: "The Magento release version to install"
 
-      # Paso 4: Configurar autenticación para Composer
-      - name: Configure Composer Authentication
-        run: |
-          echo '{
-            "http-basic": {
-              "repo.magento.com": {
-                "username": "b893576f694008764f5e376c4f5da092",
-                "password": "1f285634b091d0d9df0778750dd8d4d9"
-              }
-            }
-          }' > ~/.composer/auth.json
+  magento_repository:
+    type: string
+    required: false
+    default: "https://repo.magento.com/"
+    description: "Where to install Magento from"
 
-      # Paso 5: Crear el proyecto de Magento con Composer 1.x
-      - name: Create Magento project
-        run: |
-          ./composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.3.5 ./magento
+  composer_auth:
+    type: string
+    required: false
+    description: "Composer authentication credentials"
+    default: ""
 
-      # Paso 6: Configurar dependencias manualmente
-      - name: Adjust problematic dependencies
-        working-directory: ./magento
-        run: |
-          ./composer require dealerdirect/phpcodesniffer-composer-installer:^0.5 --dev
-          ./composer require laminas/laminas-dependency-plugin:^1.0 --dev
+  varnish_setup:
+    type: boolean
+    required: false
+    description: "Install with ready-to-use Varnish"
+    default: false
 
-      # Paso 7: Configurar Magento con DDEV
-      - name: Configure Magento in DDEV
-        working-directory: ./magento
-        run: |
-          ddev start
-          ddev exec bin/magento setup:install \
-            --base-url=https://m2.ddev.site \
-            --db-host=db \
-            --db-name=db \
-            --db-user=db \
-            --db-password=db \
-            --backend-frontname=admin \
-            --admin-firstname=admin \
-            --admin-lastname=admin \
-            --admin-email=admin@example.com \
-            --admin-user=admin \
-            --admin-password=admin123 \
-            --language=en_US \
-            --currency=USD \
-            --timezone=America/Chicago \
-            --use-rewrites=1
+runs:
+  using: "composite"
+  steps:
+
+    - name: Install DDEV
+      shell: bash
+      run: |
+        curl -fsSL https://apt.fury.io/drud/gpg.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/ddev.gpg > /dev/null
+        echo "deb [signed-by=/etc/apt/trusted.gpg.d/ddev.gpg] https://apt.fury.io/drud/ * *" | sudo tee /etc/apt/sources.list.d/ddev.list
+        sudo apt-get -q update
+        sudo apt-get -q -y install libnss3-tools ddev
+        mkcert -install
+        ddev config global --instrumentation-opt-in=false --omit-containers=ddev-ssh-agent
+
+    - name: Set M2_VERSION_CODE env
+      shell: bash
+      env:
+        magento_version: ${{ inputs.magento_version }}
+      run: |
+        echo "M2_VERSION_CODE=$(echo m$magento_version | grep  -oP "^m([0-9]{1,}\.)([0-9]{1,}\.)([0-9]{1,})(-(p)\.[0-9]{1,})?" | sed 's/\.//g' )" >> $GITHUB_ENV
+
+    - name: Set DDEV_DATABASE env
+      shell: bash
+      env:
+        magento_version: ${{ inputs.magento_version }}
+        database: ${{ inputs.database }}
+      run: |
+        if [ -n "$database" ]; then
+          echo "DDEV_DATABASE=$database" >> $GITHUB_ENV
+          exit 0
+        fi
+        base_version="${magento_version%-*}" 
+        compare_version() {
+          echo "$1" | awk -F. '{ printf "%03d%03d%03d", $1, $2, $3 }'
+        }
+        if [ "$(compare_version "$base_version")" -ge "$(compare_version "2.4.1")" ]; then
+          echo "DDEV_DATABASE=mariadb:10.4" >> $GITHUB_ENV
+        else
+          echo "DDEV_DATABASE=mariadb:10.2" >> $GITHUB_ENV
+        fi
+
+    - name: Create empty Magento 2 DDEV project
+      shell: bash
+      run: ddev config --project-type=magento2 --project-name=${{ env.M2_VERSION_CODE }} --database ${{ env.DDEV_DATABASE }} --docroot=pub --create-docroot --disable-settings-management
+
+    - name: Install DDEV tools add-on
+      shell: bash
+      run: ddev get julienloizelet/ddev-tools
+
+    - name: Prepare Elastic search
+      shell: bash
+      run: ddev get ddev/ddev-elasticsearch
+
+    - name: Set Magento 2 settings
+      shell: bash
+      id: magento2-settings
+      run: echo "url=https://${{ env.M2_VERSION_CODE }}.ddev.site" >> "${GITHUB_OUTPUT}"
+
+    - name: Set COMPOSER_AUTH
+      shell: bash
+      if: ${{ inputs.composer_auth }}
+      env:
+        composer_auth: ${{ inputs.composer_auth }}
+      run: |
+        mkdir -p .ddev/homeadditions/.composer
+        echo "$composer_auth" > .ddev/homeadditions/.composer/auth.json
+
+    - name: Set ELASTIC_INSTALL_STRING env for 2.3
+      shell: bash
+      if: startsWith(inputs.magento_version, '2.3')
+      run: echo "ELASTIC_INSTALL_STRING=" >> $GITHUB_ENV
+
+    - name: Handle PHP version
+      shell: bash
+      env:
+        php_version: ${{ inputs.php_version }}
+      run: |
+        sed -i -e "s/^php_version:.*/php_version: \"$php_version\"/g" .ddev/config.yaml
+
+    - name: Handle composer version
+      shell: bash
+      if: contains(fromJson('["2.3.0","2.3.1","2.3.2","2.3.3","2.3.4","2.3.5","2.3.6","2.4.0","2.4.1"]'),inputs.magento_version)
+      run: |
+        sed -i -e 's/^composer_version:.*/composer_version: "1"/g' .ddev/config.yaml    
+
+    - name: Start DDEV
+      shell: bash
+      run: ddev start
+
+    - name: Create Magento ${{ inputs.magento_edition }} ${{ inputs.magento_version }} project
+      shell: bash
+      env:
+        magento_edition: ${{ inputs.magento_edition }}
+        magento_version: ${{ inputs.magento_version }}
+        magento_repository: ${{ inputs.magento_repository }}
+      run: |
+        ddev exec composer create --repository="$magento_repository" "$magento_edition" ${{ env.M2_VERSION_CODE }} "$magento_version" --no-install
