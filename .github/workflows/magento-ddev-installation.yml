@@ -10,17 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Paso 1: Checkout del repositorio
+      # Paso 1: Instalar PHP 7.3
+      - name: Set up PHP 7.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '7.3'
+
+      # Paso 2: Checkout del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Paso 2: Instalar una versión local de Composer compatible
+      # Paso 3: Instalar una versión local de Composer compatible
       - name: Install Composer v2.1.x locally
         run: |
           curl -sS https://getcomposer.org/installer | php -- --version=2.1.14
           mv composer.phar composer
 
-      # Paso 3: Configurar autenticación para Composer
+      # Paso 4: Configurar autenticación para Composer
       - name: Configure Composer Authentication
         run: |
           echo '{
@@ -32,12 +38,12 @@ jobs:
             }
           }' > ~/.composer/auth.json
 
-      # Paso 4: Crear el proyecto de Magento
+      # Paso 5: Crear el proyecto de Magento
       - name: Create Magento project
         run: |
           ./composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.3.5 ./magento
 
-      # Paso 5: Ajustar dependencias problemáticas
+      # Paso 6: Ajustar dependencias problemáticas
       - name: Adjust problematic dependencies
         working-directory: ./magento
         run: |
@@ -45,7 +51,7 @@ jobs:
           ./composer require dealerdirect/phpcodesniffer-composer-installer:^0.5 --no-update
           ./composer update --ignore-platform-reqs --no-interaction
 
-      # Paso 6: Configurar Magento con DDEV
+      # Paso 7: Configurar Magento con DDEV
       - name: Configure Magento in DDEV
         working-directory: ./magento
         run: |
