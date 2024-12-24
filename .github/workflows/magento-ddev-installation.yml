@@ -20,10 +20,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Paso 3: Instalar una versión local de Composer compatible
-      - name: Install Composer v2.1.x locally
+      # Paso 3: Instalar Composer 1.x
+      - name: Install Composer 1.x locally
         run: |
-          curl -sS https://getcomposer.org/installer | php -- --version=2.1.14
+          curl -sS https://getcomposer.org/installer | php -- --1
           mv composer.phar composer
 
       # Paso 4: Configurar autenticación para Composer
@@ -38,18 +38,17 @@ jobs:
             }
           }' > ~/.composer/auth.json
 
-      # Paso 5: Crear el proyecto de Magento
+      # Paso 5: Crear el proyecto de Magento con Composer 1.x
       - name: Create Magento project
         run: |
           ./composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.3.5 ./magento
 
-      # Paso 6: Ajustar dependencias problemáticas
+      # Paso 6: Configurar dependencias manualmente
       - name: Adjust problematic dependencies
         working-directory: ./magento
         run: |
-          ./composer require laminas/laminas-dependency-plugin:^1.0 --no-update
-          ./composer require dealerdirect/phpcodesniffer-composer-installer:^0.5 --no-update
-          ./composer update --ignore-platform-reqs --no-interaction
+          ./composer require dealerdirect/phpcodesniffer-composer-installer:^0.5 --dev
+          ./composer require laminas/laminas-dependency-plugin:^1.0 --dev
 
       # Paso 7: Configurar Magento con DDEV
       - name: Configure Magento in DDEV
