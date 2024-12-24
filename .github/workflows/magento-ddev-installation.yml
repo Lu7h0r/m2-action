@@ -14,16 +14,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Paso 2: Downgrade Composer a una versión compatible
-      - name: Downgrade Composer to v2.1.x
+      # Paso 2: Instalar una versión local de Composer compatible
+      - name: Install Composer v2.1.x locally
         run: |
-          composer self-update 2.1.14
+          curl -sS https://getcomposer.org/installer | php -- --version=2.1.14
+          mv composer.phar composer
 
       # Paso 3: Resolver conflictos de dependencias
       - name: Resolve dependency conflicts
         run: |
-          composer require dealer-direct/phpcodesniffer-composer-installer:^0.5 --dev
-          composer require laminas/laminas-dependency-plugin:^1.0 --dev
+          ./composer require dealer-direct/phpcodesniffer-composer-installer:^0.5 --dev
+          ./composer require laminas/laminas-dependency-plugin:^1.0 --dev
 
       # Paso 4: Instalar Magento 2 con DDEV
       - name: Install Magento 2 with DDEV
