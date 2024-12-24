@@ -10,11 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout del repositorio
+      # Paso 1: Checkout del repositorio
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Instalar Magento 2 con DDEV
+      # Paso 2: Downgrade Composer a una versión compatible
+      - name: Downgrade Composer to v2.1.x
+        run: |
+          composer self-update 2.1.14
+
+      # Paso 3: Resolver conflictos de dependencias
+      - name: Resolve dependency conflicts
+        run: |
+          composer require dealer-direct/phpcodesniffer-composer-installer:^0.5 --dev
+          composer require laminas/laminas-dependency-plugin:^1.0 --dev
+
+      # Paso 4: Instalar Magento 2 con DDEV
       - name: Install Magento 2 with DDEV
         uses: julienloizelet/magento2-ddev-installation@v3
         with:
