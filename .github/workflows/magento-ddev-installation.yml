@@ -14,23 +14,43 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Paso 2: Instalar una versión local de Composer compatible
+      # Paso 2: Instalar una versión local de Composer 2.1.x
       - name: Install Composer v2.1.x locally
         run: |
           curl -sS https://getcomposer.org/installer | php -- --version=2.1.14
           mv composer.phar composer
 
-      # Paso 3: Instalar Magento 2 con DDEV
-      - name: Install Magento 2 with DDEV
-        uses: julienloizelet/magento2-ddev-installation@v3
-        with:
-          php_version: "7.3"
-          magento_version: "2.3.5"
-          magento_repository: "https://repo.magento.com/"
-          composer_auth: ${{ secrets.M2_COMPOSER_AUTH }}
-
-      # Paso 4: Resolver conflictos de dependencias (después de inicializar Magento)
-      - name: Resolve dependency conflicts
+      # Paso 3: Crear un proyecto de Magento 2.3.5
+      - name: Create Magento project
         run: |
-          ./composer require dealer-direct/phpcodesniffer-composer-installer:^0.5 --dev
-          ./composer require laminas/laminas-dependency-plugin:^1.0 --dev
+          ./composer create-project --repository-url=https://repo.magento.com/ magento/project-community-edition=2.3.5 ./magento
+
+      # Paso 4: Ajustar dependencias problemáticas
+      - name: Adjust problematic dependencies
+        working-directory: ./magento
+        run: |
+          ./composer require laminas/laminas-dependency-plugin:^1.0 --no-update
+          ./composer require dealerdirect/phpcodesniffer-composer-installer:^0.5 --no-update
+          ./composer update --ignore-platform-reqs --no-interaction
+
+      # Paso 5: Configurar Magento con DDEV
+      - name: Configure Magento in DDEV
+        working-directory: ./magento
+        run: |
+          ddev start
+          ddev exec bin/magento setup:install \
+            --base-url=https://m2.ddev.site \
+            --db-host=db \
+            --db-name=db \
+            --db-user=db \
+            --db-password=db \
+            --backend-frontname=admin \
+            --admin-firstname=admin \
+            --admin-lastname=admin \
+            --admin-email=admin@example.com \
+            --admin-user=admin \
+            --admin-password=admin123 \
+            --language=en_US \
+            --currency=USD \
+            --timezone=America/Chicago \
+            --use-rewrites=1
